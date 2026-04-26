@@ -1,0 +1,73 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: searches
+// Document ID: auto-generated
+// Fields:
+//   - userId: string (required) - UID of the user
+//   - query: string (required) - The search query
+//   - timestamp: timestamp (required) - When the search was performed
+//   - result: map (required) - The full comparison result
+//
+// Collection: preferences
+// Document ID: userId
+// Fields:
+//   - userId: string (required) - UID of the user
+//   - bookmarks: list of strings (optional) - List of bookmarked IDs
+//   - theme: string (optional) - UI theme preference
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+    
+    function isValidSearch(data) {
+      return data.keys().hasAll(['userId', 'query', 'timestamp', 'result']) &&
+             data.userId is string &&
+             data.query is string && data.query.size() < 500 &&
+             data.timestamp is timestamp &&
+             data.result is map;
+    }
+
+    function isValidPreference(data) {
+      return data.keys().hasAll(['userId']) &&
+             data.userId is string &&
+             (!('bookmarks' in data) || data.bookmarks is list) &&
+             (!('theme' in data) || data.theme in ['light', 'dark']);
+    }
+
+    // Rules for searches
+    match /searches/{searchId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && 
+                      request.resource.data.userId == request.auth.uid &&
+                      isValidSearch(request.resource.data);
+      allow update, delete: if false; // Search history is immutable
+    }
+
+    // Rules for preferences
+    match /preferences/{userId} {
+      allow read, write: if isOwner(userId) && isValidPreference(request.resource.data);
+    }
+    
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

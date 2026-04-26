@@ -1,0 +1,5 @@
+{
+  "name": "CRR × PS01/2026 Lookup Engine",
+  "description": "Interactive lookup and comparison engine for CRR (EU 575/2013) and PRA PS01/2026 Basel 3.1 implementation.",
+  "requestFramePermissions": []
+}

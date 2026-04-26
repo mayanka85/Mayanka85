@@ -1,0 +1,37 @@
+{
+  "entities": {
+    "SearchHistory": {
+      "title": "Search History",
+      "description": "Stores user search queries and results for regulatory lookup.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The UID of the user who performed the search." },
+        "query": { "type": "string", "description": "The search query or filter used." },
+        "timestamp": { "type": "string", "format": "date-time", "description": "When the search was performed." },
+        "resultSummary": { "type": "string", "description": "A brief summary of the search result." }
+      },
+      "required": ["userId", "query", "timestamp"]
+    },
+    "UserPreference": {
+      "title": "User Preference",
+      "description": "Stores user-specific settings and bookmarks.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The UID of the user." },
+        "bookmarks": { "type": "array", "items": { "type": "string" }, "description": "List of bookmarked Article IDs or topics." },
+        "theme": { "type": "string", "enum": ["light", "dark"], "description": "User's preferred UI theme." }
+      },
+      "required": ["userId"]
+    }
+  },
+  "firestore": {
+    "/searches/{searchId}": {
+      "schema": "SearchHistory",
+      "description": "Collection of regulatory search history."
+    },
+    "/preferences/{userId}": {
+      "schema": "UserPreference",
+      "description": "User-specific settings and bookmarks."
+    }
+  }
+}
