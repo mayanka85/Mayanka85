@@ -47,6 +47,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [currentResult, setCurrentResult] = useState<RegulatoryComparison | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -100,6 +101,7 @@ export default function App() {
     if (!searchInput.trim()) return;
 
     setSearching(true);
+    setError(null);
     try {
       const result = await lookupRegulatorySection(searchInput);
       setCurrentResult(result);
@@ -115,8 +117,9 @@ export default function App() {
           result
         });
       }
-    } catch (error) {
-      console.error('Search failed:', error);
+    } catch (err) {
+      console.error('Search failed:', err);
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred while searching.');
     } finally {
       setSearching(false);
     }
@@ -427,13 +430,22 @@ export default function App() {
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
                     placeholder="Search Article (e.g. Article 92), Topic (e.g. Output Floor)..."
-                    className="pl-12 py-7 bg-card border-2 border-border focus:border-primary focus:ring-4 focus:ring-primary/10 text-foreground placeholder:text-muted-foreground font-sans text-base rounded-2xl shadow-sm transition-all"
+                    className={`pl-12 py-7 bg-card border-2 ${error ? 'border-red-500 bg-red-50/10' : 'border-border'} focus:border-primary focus:ring-4 focus:ring-primary/10 text-foreground placeholder:text-muted-foreground font-sans text-base rounded-2xl shadow-sm transition-all`}
                   />
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-3">
                     <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest hidden sm:block">Press Enter</span>
                     {searching && <Loader2 className="w-5 h-5 text-primary animate-spin" />}
                   </div>
                 </form>
+                {error && (
+                  <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-500 text-sm animate-in fade-in slide-in-from-top-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{error}</span>
+                    <button onClick={() => setError(null)} className="ml-auto hover:bg-red-500/10 p-1 rounded-lg">
+                      <LogOut className="w-3 h-3 rotate-45" />
+                    </button>
+                  </div>
+                )}
               </div>
 
               <ScrollArea className="flex-1">
