@@ -31,28 +31,25 @@ export interface ComparisonRow {
 
 export async function lookupRegulatorySection(filter: string): Promise<RegulatoryComparison> {
   const response = await ai.models.generateContent({
-    model: "gemini-3.1-pro-preview",
+    model: "gemini-1.5-flash",
     contents: `You are a Senior Prudential Regulatory Analyst. 
-    Retrieve and compare regulatory text for the filter: "${filter}".
+    Analyze and compare the regulatory landscape for: "${filter}".
     
     CRITICAL SEARCH LOGIC:
-    - If the user provides an EBA Q&A ID (e.g., "2017_3424" or "2021_6123"), you MUST find the specific Q&A content for that ID.
-    - Identify the CRR Article that this Q&A interprets (e.g., Article 178 for 2017_3424).
-    - Provide the full comparison for that CRR Article vs PS01/2026.
-    - Ensure the "ebaQas" array contains the specific Q&A the user asked for as the first item.
+    - If the user provides an EBA Q&A ID (e.g., "2017_3424"), find that specific Q&A and its associated CRR Article.
+    - Match the CRR (EU 575/2013) consolidated text against the PRA PS01/2026 (UK Basel 3.1) implementation.
     
-    Follow these steps:
-    1. Retrieve the FULL verbatim CRR (EU 575/2013) consolidated text for the matched section. Do not truncate.
-    2. Retrieve the FULL verbatim PS01/2026 PRA Basel 3.1 implementation text for the same section. Do not truncate.
-    3. Provide the direct URLs to the specific articles/chapters on legislation.gov.uk and bankofengland.co.uk.
-    4. Perform an EXHAUSTIVE search of the EBA Q&A database. You MUST provide ALL relevant Q&As (IDs, Questions, and Answers) that apply to this specific article or topic. Do not limit to one.
-    5. Produce a detailed structured comparison table focusing on technical deltas.
-    6. Provide "Regulatory Guidance & Technical Interpretations" (professional notes) that synthesize official guidance and practitioner considerations.
-    7. Generate a "Professional Executive Briefing" for senior stakeholders (Strategic Impact, Capital Impact, Operational Complexity, Business Implications).
+    Professional Requirements:
+    1. Verbatim CRR text (focused on the specific section).
+    2. Verbatim PS01/2026 PRA text for the technical delta.
+    3. Direct source URLs (legislation.gov.uk and bankofengland.co.uk).
+    4. Retrieve relevant EBA Q&As interpreting this article.
+    5. Detailed comparison table of technical changes.
+    6. Regulatory synthesis (Practitioner Notes).
+    7. Professional Executive Briefing (Strategic Impact, Capital Implications, Operational Complexity).
     
     Return the result in JSON format.`,
     config: {
-      thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -124,7 +121,7 @@ export async function lookupRegulatorySection(filter: string): Promise<Regulator
 
 export async function analyzeRegulatoryQuery(query: string, context?: string): Promise<string> {
   const response = await (ai.models as any).generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-1.5-flash",
     contents: `Analyze the following regulatory query: "${query}"
     ${context ? `Context: ${context}` : ''}
     
