@@ -119,7 +119,23 @@ export default function App() {
       }
     } catch (err) {
       console.error('Search failed:', err);
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred while searching.');
+      let message = 'An unexpected error occurred while searching.';
+      if (err instanceof Error) {
+        try {
+          // Check if the error message is a JSON string (often from the SDK proxy)
+          const parsed = JSON.parse(err.message);
+          if (parsed.error && parsed.error.message) {
+            message = parsed.error.message;
+          } else if (parsed.message) {
+            message = parsed.message;
+          } else {
+            message = err.message;
+          }
+        } catch {
+          message = err.message;
+        }
+      }
+      setError(message);
     } finally {
       setSearching(false);
     }
@@ -588,12 +604,14 @@ export default function App() {
                                   <textarea 
                                     value={editedCrr}
                                     onChange={(e) => setEditedCrr(e.target.value)}
-                                    className="w-full min-h-[350px] bg-background border-2 border-border rounded-xl p-4 text-sm font-mono text-foreground focus:border-primary outline-none transition-all resize-y"
+                                    className="w-full min-h-[450px] bg-background border-2 border-border rounded-xl p-4 text-sm font-mono text-foreground focus:border-primary outline-none transition-all resize-y"
                                   />
                                 ) : (
-                                  <div className="text-sm text-foreground/80 leading-relaxed font-mono whitespace-pre-wrap">
-                                    {editedCrr}
-                                  </div>
+                                  <ScrollArea className="h-[450px] w-full pr-4">
+                                    <div className="text-sm text-foreground/80 leading-relaxed font-mono whitespace-pre-wrap pb-4">
+                                      {editedCrr}
+                                    </div>
+                                  </ScrollArea>
                                 )}
                               </div>
                               <div className="p-6 border-2 border-border rounded-2xl bg-card/50 shadow-sm relative overflow-hidden group">
@@ -608,12 +626,14 @@ export default function App() {
                                   <textarea 
                                     value={editedPs}
                                     onChange={(e) => setEditedPs(e.target.value)}
-                                    className="w-full min-h-[350px] bg-background border-2 border-border rounded-xl p-4 text-sm font-mono text-foreground focus:border-primary outline-none transition-all resize-y"
+                                    className="w-full min-h-[450px] bg-background border-2 border-border rounded-xl p-4 text-sm font-mono text-foreground focus:border-primary outline-none transition-all resize-y"
                                   />
                                 ) : (
-                                  <div className="text-sm text-foreground/80 leading-relaxed font-mono whitespace-pre-wrap">
-                                    {editedPs}
-                                  </div>
+                                  <ScrollArea className="h-[450px] w-full pr-4">
+                                    <div className="text-sm text-foreground/80 leading-relaxed font-mono whitespace-pre-wrap pb-4">
+                                      {editedPs}
+                                    </div>
+                                  </ScrollArea>
                                 )}
                               </div>
                             </div>

@@ -33,31 +33,36 @@ export interface ComparisonRow {
 export async function lookupRegulatorySection(filter: string): Promise<RegulatoryComparison> {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `You are a Senior Prudential Regulatory Analyst. 
-      Analyze and compare the regulatory landscape for: "${filter}".
+      model: "gemini-3.1-pro-preview", // Use Pro for higher fidelity and following long verbatim instructions
+      contents: `You are a Senior Prudential Regulatory Analyst with access to complete consolidated versions of the CRR (Regulation (EU) No 575/2013) and the PRA Basel 3.1 PS01/2026 implementing standards.
       
-      CRITICAL SEARCH LOGIC:
-      - If the user provides an EBA Q&A ID (e.g., "2017_3424"), find that specific Q&A and its associated CRR Article.
-      - Match the CRR (EU 575/2013) consolidated text against the PRA PS01/2026 (UK Basel 3.1) implementation.
+      TASK: Retrieve and compare the regulatory text for: "${filter}".
       
-      Professional Requirements:
-      1. Verbatim CRR text (focused on the specific section).
-      2. Verbatim PS01/2026 PRA text for the technical delta.
-      3. Direct source URLs (legislation.gov.uk and bankofengland.co.uk).
-      4. Retrieve relevant EBA Q&As interpreting this article.
-      5. Detailed comparison table of technical changes.
-      6. Regulatory synthesis (Practitioner Notes).
-      7. Professional Executive Briefing (Strategic Impact, Capital Implications, Operational Complexity).
+      CRITICAL SEARCH & RETRIEVAL LOGIC:
+      1. CRR TEXT RETRIEVAL:
+         - Identify the EXACT CRR Article(s) requested or related to the filter.
+         - You MUST provide the FULL, VERBATIM, and COMPLETELY UNTRUNCATED text for every paragraph and sub-paragraph. 
+         - If the input is "Article 178", provide ALL sections from (1) to (6) and all sub-points.
+         - If the input is "Article 115", provide ALL paragraphs from (1) to (5).
+         - NEVER summarize or use "..." to truncate the text. 
       
-      Return the result in JSON format following the schema.`,
+      2. PS01/2026 TEXT RETRIEVAL:
+         - Find the corresponding technical standard or rule in PS01/2026 (UK Basel 3.1 implementation).
+         - Provide the FULL, VERBATIM text of the PRA implementation for that specific section.
+      
+      3. COMPARISON & ANALYSIS:
+         - Match the texts precisely.
+         - Create a detailed technical delta table.
+         - Provide practitioner notes and a strategic executive briefing.
+      
+      Return the result in JSON format following the provided schema. Priority is given to completeness of crrText and psText.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            crrText: { type: Type.STRING },
-            psText: { type: Type.STRING },
+            crrText: { type: Type.STRING, description: "The FULL AND VERBATIM consolidated legal text of the CRR article. DO NOT TRUNCATE." },
+            psText: { type: Type.STRING, description: "The FULL AND VERBATIM legal text of the PS01/2026 implementation. DO NOT TRUNCATE." },
             crrUrl: { type: Type.STRING },
             psUrl: { type: Type.STRING },
             ebaQas: {
@@ -90,9 +95,9 @@ export async function lookupRegulatorySection(filter: string): Promise<Regulator
             executiveBriefing: {
               type: Type.OBJECT,
               properties: {
-                strategicImpact: { type: Type.STRING },
-                capitalImpact: { type: Type.STRING },
-                operationalComplexity: { type: Type.STRING },
+                strategicImpact: { type: Type.STRING, enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+                capitalImpact: { type: Type.STRING, enum: ["NEUTRAL", "INCREASE", "DECREASE"] },
+                operationalComplexity: { type: Type.STRING, enum: ["LOW", "MEDIUM", "HIGH"] },
                 keyTakeaways: { type: Type.ARRAY, items: { type: Type.STRING } },
                 businessImplications: { type: Type.STRING }
               },
@@ -104,24 +109,27 @@ export async function lookupRegulatorySection(filter: string): Promise<Regulator
       }
     });
 
-    const text = response.text;
-    if (!text) {
-      throw new Error("The model did not provide a response text.");
+    if (!response || !response.text) {
+      throw new Error("The AI model returned an empty response. This can happen if the requested article is extremely large or hit a safety filter. Please try a more specific article number.");
     }
 
-    return JSON.parse(text);
+    return JSON.parse(response.text);
   } catch (err) {
     console.error("Regulatory Search Error:", err);
-    throw new Error(`Regulatory Intelligence Error: ${err instanceof Error ? err.message : 'Unknown network error'}`);
+    let errorMessage = "Unknown network error";
+    if (err instanceof Error) {
+      errorMessage = err.message;
+    }
+    throw new Error(`Regulatory Intelligence Error: ${errorMessage}`);
   }
 }
 
 export async function analyzeRegulatoryQuery(query: string, context?: string): Promise<string> {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Analyze the following regulatory query: "${query}"
-      ${context ? `Context: ${context}` : ''}
+      model: "gemini-flash-latest", // Use Flash for quick interactive assistant
+      contents: `You are a Regulatory Assistant. Analyze: "${query}"
+      ${context ? `Context of current regulatory search: ${context}` : ''}
       
       Provide a concise, expert analysis focusing on capital impact and implementation challenges.`,
       config: {
@@ -129,9 +137,9 @@ export async function analyzeRegulatoryQuery(query: string, context?: string): P
       }
     });
     
-    return response.text || "Failed to generate analysis.";
+    return response.text || "Analysis currently unavailable.";
   } catch (err) {
     console.error("Regulatory Analysis Error:", err);
-    throw new Error("Failed to process regulatory query.");
+    throw new Error("Assistant failed to process query.");
   }
 }
