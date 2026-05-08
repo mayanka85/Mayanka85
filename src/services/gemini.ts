@@ -30,7 +30,7 @@ export interface ComparisonRow {
   changeType: 'NO CHANGE' | 'MODIFIED' | 'DELETED' | 'NEW' | 'DIVERGENCE' | 'TRANSITIONAL';
 }
 
-const USE_PYTHON_BACKEND = false;
+const USE_PYTHON_BACKEND = true;
 
 async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 1000, fallbackModel?: string): Promise<T> {
   try {
