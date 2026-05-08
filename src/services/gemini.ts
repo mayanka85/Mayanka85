@@ -30,10 +30,41 @@ export interface ComparisonRow {
   changeType: 'NO CHANGE' | 'MODIFIED' | 'DELETED' | 'NEW' | 'DIVERGENCE' | 'TRANSITIONAL';
 }
 
-export async function lookupRegulatorySection(filter: string): Promise<RegulatoryComparison> {
+const USE_PYTHON_BACKEND = false;
+
+async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 1000, fallbackModel?: string): Promise<T> {
   try {
+    return await fn();
+  } catch (error: any) {
+    const errorMsg = error?.message || String(error);
+    const isBusy = errorMsg.includes('503') || errorMsg.includes('UNAVAILABLE') || errorMsg.includes('high demand');
+    
+    if (isBusy && retries > 0) {
+      console.warn(`Regulatory Engine is busy, retrying in ${delay}ms... (${retries} attempts left)`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return retryWithBackoff(fn, retries - 1, delay * 2, fallbackModel);
+    }
+    throw error;
+  }
+}
+
+export async function lookupRegulatorySection(filter: string): Promise<RegulatoryComparison> {
+  if (USE_PYTHON_BACKEND) {
+    try {
+      const resp = await fetch("/api/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: filter }),
+      });
+      if (resp.ok) return await resp.json();
+    } catch (e) {
+      console.warn("Backend fallback active");
+    }
+  }
+
+  return retryWithBackoff(async () => {
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview", // Use Pro for higher fidelity and following long verbatim instructions
+      model: "gemini-1.5-pro-latest", // Use stable Pro version
       contents: `You are a Senior Prudential Regulatory Analyst with access to complete consolidated versions of the CRR (Regulation (EU) No 575/2013) and the PRA Basel 3.1 PS01/2026 implementing standards.
       
       TASK: Retrieve and compare the regulatory text for: "${filter}".
@@ -110,24 +141,33 @@ export async function lookupRegulatorySection(filter: string): Promise<Regulator
     });
 
     if (!response || !response.text) {
-      throw new Error("The AI model returned an empty response. This can happen if the requested article is extremely large or hit a safety filter. Please try a more specific article number.");
+      throw new Error("Empty response from AI Engine.");
     }
 
     return JSON.parse(response.text);
-  } catch (err) {
-    console.error("Regulatory Search Error:", err);
-    let errorMessage = "Unknown network error";
-    if (err instanceof Error) {
-      errorMessage = err.message;
-    }
-    throw new Error(`Regulatory Intelligence Error: ${errorMessage}`);
-  }
+  });
 }
 
 export async function analyzeRegulatoryQuery(query: string, context?: string): Promise<string> {
-  try {
+  if (USE_PYTHON_BACKEND) {
+    try {
+      const resp = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, context }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        return data.analysis;
+      }
+    } catch (e) {
+      console.warn("Analysis fallback active");
+    }
+  }
+
+  return retryWithBackoff(async () => {
     const response = await ai.models.generateContent({
-      model: "gemini-flash-latest", // Use Flash for quick interactive assistant
+      model: "gemini-1.5-flash-latest", // Flash is highly available
       contents: `You are a Regulatory Assistant. Analyze: "${query}"
       ${context ? `Context of current regulatory search: ${context}` : ''}
       
@@ -138,8 +178,5 @@ export async function analyzeRegulatoryQuery(query: string, context?: string): P
     });
     
     return response.text || "Analysis currently unavailable.";
-  } catch (err) {
-    console.error("Regulatory Analysis Error:", err);
-    throw new Error("Assistant failed to process query.");
-  }
+  });
 }
