@@ -64,7 +64,7 @@ export async function lookupRegulatorySection(filter: string): Promise<Regulator
 
   return retryWithBackoff(async () => {
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-pro", // Stable production version
+      model: "models/gemini-1.5-pro", // Explicit model path
       contents: `You are a Senior Prudential Regulatory Analyst with access to complete consolidated versions of the CRR (Regulation (EU) No 575/2013) and the PRA Basel 3.1 PS01/2026 implementing standards.
       
       TASK: Retrieve and compare the regulatory text for: "${filter}".
@@ -167,7 +167,7 @@ export async function analyzeRegulatoryQuery(query: string, context?: string): P
 
   return retryWithBackoff(async () => {
     const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash", // Flash is highly available
+      model: "models/gemini-1.5-flash", // Explicit model path
       contents: `You are a Regulatory Assistant. Analyze: "${query}"
       ${context ? `Context of current regulatory search: ${context}` : ''}
       

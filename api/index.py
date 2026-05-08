@@ -87,7 +87,7 @@ def retry_generate(model, prompt, config=None, retries=3, delay=1):
 async def lookup_regulatory_section(request: QueryRequest):
     try:
         # Use the most capable model for legal parsing
-        model = genai.GenerativeModel('gemini-1.5-pro') 
+        model = genai.GenerativeModel('models/gemini-1.5-pro') 
         
         prompt = f"""
         You are a Senior Regulatory Counsel specializing in CRR (EU) and PRA (UK) Prudential standards.
@@ -150,7 +150,7 @@ async def lookup_regulatory_section(request: QueryRequest):
 @app.post("/api/analyze")
 async def analyze_query(request: QueryRequest):
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('models/gemini-1.5-flash')
         
         context_str = f"Context: {request.context}" if request.context else ""
         prompt = f"""
