@@ -86,8 +86,8 @@ def retry_generate(model, prompt, config=None, retries=3, delay=1):
 @app.post("/api/lookup", response_model=RegulatoryComparison)
 async def lookup_regulatory_section(request: QueryRequest):
     try:
-        # Use the most capable model for legal parsing
-        model = genai.GenerativeModel('gemini-1.5-pro') 
+        # Use Flash for higher availability across all regions
+        model = genai.GenerativeModel('gemini-1.5-flash') 
         
         prompt = f"""
         You are a Senior Regulatory Counsel specializing in CRR (EU) and PRA (UK) Prudential standards.
