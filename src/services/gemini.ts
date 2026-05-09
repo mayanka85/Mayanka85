@@ -1,7 +1,8 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
-// Ensure process.env.GEMINI_API_KEY is available during the build (handled by Vite define)
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+// Standard official SDK initialization
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const ai = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 export interface RegulatoryComparison {
   crrText: string;
@@ -63,9 +64,11 @@ export async function lookupRegulatorySection(filter: string): Promise<Regulator
   }
 
   return retryWithBackoff(async () => {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash", // Use Flash for high availability
-      contents: `You are a Senior Prudential Regulatory Analyst with access to complete consolidated versions of the CRR (Regulation (EU) No 575/2013) and the PRA Basel 3.1 PS01/2026 implementing standards.
+    const result = await ai.generateContent({
+      contents: [{
+        role: 'user',
+        parts: [{
+          text: `You are a Senior Prudential Regulatory Analyst with access to complete consolidated versions of the CRR (Regulation (EU) No 575/2013) and the PRA Basel 3.1 PS01/2026 implementing standards.
       
       TASK: Retrieve and compare the regulatory text for: "${filter}".
       
@@ -86,51 +89,53 @@ export async function lookupRegulatorySection(filter: string): Promise<Regulator
          - Create a detailed technical delta table.
          - Provide practitioner notes and a strategic executive briefing.
       
-      Return the result in JSON format following the provided schema. Priority is given to completeness of crrText and psText.`,
-      config: {
+      Return the result in JSON format following the provided schema. Priority is given to completeness of crrText and psText.`
+        }]
+      }],
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {
-          type: Type.OBJECT,
+          type: SchemaType.OBJECT,
           properties: {
-            crrText: { type: Type.STRING, description: "The FULL AND VERBATIM consolidated legal text of the CRR article. DO NOT TRUNCATE." },
-            psText: { type: Type.STRING, description: "The FULL AND VERBATIM legal text of the PS01/2026 implementation. DO NOT TRUNCATE." },
-            crrUrl: { type: Type.STRING },
-            psUrl: { type: Type.STRING },
+            crrText: { type: SchemaType.STRING, description: "The FULL AND VERBATIM consolidated legal text of the CRR article. DO NOT TRUNCATE." },
+            psText: { type: SchemaType.STRING, description: "The FULL AND VERBATIM legal text of the PS01/2026 implementation. DO NOT TRUNCATE." },
+            crrUrl: { type: SchemaType.STRING },
+            psUrl: { type: SchemaType.STRING },
             ebaQas: {
-              type: Type.ARRAY,
+              type: SchemaType.ARRAY,
               items: {
-                type: Type.OBJECT,
+                type: SchemaType.OBJECT,
                 properties: {
-                  id: { type: Type.STRING },
-                  question: { type: Type.STRING },
-                  answer: { type: Type.STRING }
+                  id: { type: SchemaType.STRING },
+                  question: { type: SchemaType.STRING },
+                  answer: { type: SchemaType.STRING }
                 },
                 required: ["id", "question", "answer"]
               }
             },
             comparisonTable: {
-              type: Type.ARRAY,
+              type: SchemaType.ARRAY,
               items: {
-                type: Type.OBJECT,
+                type: SchemaType.OBJECT,
                 properties: {
-                  dimension: { type: Type.STRING },
-                  crrValue: { type: Type.STRING },
-                  psValue: { type: Type.STRING },
-                  changeType: { type: Type.STRING }
+                  dimension: { type: SchemaType.STRING },
+                  crrValue: { type: SchemaType.STRING },
+                  psValue: { type: SchemaType.STRING },
+                  changeType: { type: SchemaType.STRING }
                 },
                 required: ["dimension", "crrValue", "psValue", "changeType"]
               }
             },
-            summary: { type: Type.ARRAY, items: { type: Type.STRING } },
-            practitionerNotes: { type: Type.ARRAY, items: { type: Type.STRING } },
+            summary: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+            practitionerNotes: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
             executiveBriefing: {
-              type: Type.OBJECT,
+              type: SchemaType.OBJECT,
               properties: {
-                strategicImpact: { type: Type.STRING, enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
-                capitalImpact: { type: Type.STRING, enum: ["NEUTRAL", "INCREASE", "DECREASE"] },
-                operationalComplexity: { type: Type.STRING, enum: ["LOW", "MEDIUM", "HIGH"] },
-                keyTakeaways: { type: Type.ARRAY, items: { type: Type.STRING } },
-                businessImplications: { type: Type.STRING }
+                strategicImpact: { type: SchemaType.STRING, enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+                capitalImpact: { type: SchemaType.STRING, enum: ["NEUTRAL", "INCREASE", "DECREASE"] },
+                operationalComplexity: { type: SchemaType.STRING, enum: ["LOW", "MEDIUM", "HIGH"] },
+                keyTakeaways: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+                businessImplications: { type: SchemaType.STRING }
               },
               required: ["strategicImpact", "capitalImpact", "operationalComplexity", "keyTakeaways", "businessImplications"]
             }
@@ -140,11 +145,12 @@ export async function lookupRegulatorySection(filter: string): Promise<Regulator
       }
     });
 
-    if (!response || !response.text) {
+    const text = result.response.text();
+    if (!text) {
       throw new Error("Empty response from AI Engine.");
     }
 
-    return JSON.parse(response.text);
+    return JSON.parse(text);
   });
 }
 
@@ -166,17 +172,18 @@ export async function analyzeRegulatoryQuery(query: string, context?: string): P
   }
 
   return retryWithBackoff(async () => {
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash", // Standard alias
-      contents: `You are a Regulatory Assistant. Analyze: "${query}"
+    const result = await ai.generateContent({
+      contents: [{
+        role: 'user',
+        parts: [{
+          text: `You are a Regulatory Assistant. Analyze: "${query}"
       ${context ? `Context of current regulatory search: ${context}` : ''}
       
-      Provide a concise, expert analysis focusing on capital impact and implementation challenges.`,
-      config: {
-        tools: [{ googleSearch: {} }] as any
-      }
+      Provide a concise, expert analysis focusing on capital impact and implementation challenges.`
+        }]
+      }]
     });
     
-    return response.text || "Analysis currently unavailable.";
+    return result.response.text() || "Analysis currently unavailable.";
   });
 }

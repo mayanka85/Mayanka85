@@ -86,7 +86,7 @@ def retry_generate(model, prompt, config=None, retries=3, delay=1):
 @app.post("/api/lookup", response_model=RegulatoryComparison)
 async def lookup_regulatory_section(request: QueryRequest):
     try:
-        # Use Flash for higher availability across all regions
+        # Use the highly available stable alias
         model = genai.GenerativeModel('gemini-1.5-flash') 
         
         prompt = f"""
@@ -119,7 +119,7 @@ async def lookup_regulatory_section(request: QueryRequest):
         
         config = genai.types.GenerationConfig(
             response_mime_type="application/json",
-            temperature=0.1 # Low temperature for factual consistency
+            temperature=0.1
         )
         
         response = retry_generate(model, prompt, config=config)
@@ -129,11 +129,10 @@ async def lookup_regulatory_section(request: QueryRequest):
             
         data = json.loads(response.text)
         
-        # Ensure all required fields exist to prevent Pydantic errors
+        # Validation and default assignment
         required_keys = ["crrText", "psText", "crrUrl", "psUrl", "ebaQas", "comparisonTable", "summary", "practitionerNotes", "executiveBriefing"]
         for key in required_keys:
             if key not in data:
-                # Basic initialization for missing keys
                 if key in ["ebaQas", "comparisonTable", "summary", "practitionerNotes"]:
                     data[key] = []
                 elif key == "executiveBriefing":
@@ -144,8 +143,9 @@ async def lookup_regulatory_section(request: QueryRequest):
         return data
         
     except Exception as e:
-        print(f"Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = str(e)
+        print(f"Regulatory Engine Error: {error_msg}")
+        raise HTTPException(status_code=500, detail=f"Regulatory Engine Error: {error_msg}")
 
 @app.post("/api/analyze")
 async def analyze_query(request: QueryRequest):
