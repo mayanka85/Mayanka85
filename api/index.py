@@ -86,36 +86,17 @@ def retry_generate(model, prompt, config=None, retries=3, delay=1):
 @app.post("/api/lookup", response_model=RegulatoryComparison)
 async def lookup_regulatory_section(request: QueryRequest):
     try:
-        # Use the highly available stable alias
-        model = genai.GenerativeModel('gemini-1.5-flash') 
+        # gemini-2.0-flash is the most stable and high-performance model for this task
+        model = genai.GenerativeModel('gemini-2.0-flash') 
         
-        prompt = f"""
-        You are a Senior Regulatory Counsel specializing in CRR (EU) and PRA (UK) Prudential standards.
+        prompt = f"""Analyze the regulatory article: "{request.query}"
         
-        INPUT QUERY: "{request.query}"
+        Return a formal JSON response with:
+        crrText (Full verbatim), psText (Full verbatim), crrUrl, psUrl, 
+        ebaQas (List of ID/Q/A), comparisonTable (List), summary (List), 
+        practitionerNotes (List), executiveBriefing (Object).
         
-        REQUISITE ACTION:
-        Perform a deep lookup of the relevant regulatory articles.
-        
-        1. CONSOLIDATED CRR TEXT:
-           - Locate the article in Regulation (EU) No 575/2013.
-           - Retrieve the COMPLETE, VERBATIM, and UNABRIDGED consolidated text. 
-           - Do not truncate points (1), (2), (a), (b), etc. The user requires legal certainty.
-        
-        2. PRA PS01/2026 (UK BASEL 3.1) TEXT:
-           - Identify the corresponding rule or paragraph in the PRA's implementation of Basel 3.1.
-           - Provide the FULL verbatim text of the British implementation.
-        
-        3. TECHNICAL DELTA:
-           - Compare the two texts side-by-side in a 'comparisonTable'.
-           - Highlight additions, deletions, or 'DIVERGENCE' where UK and EU paths separate.
-        
-        4. BUSINESS IMPACT:
-           - In 'executiveBriefing', score the Strategic Impact (LOW-CRITICAL) and Capital Impact.
-           - Provide practitioner notes explaining common implementation pitfalls.
-        
-        FORMAT: Return strictly JSON following the specified schema properties.
-        """
+        Do not truncate the legal texts."""
         
         config = genai.types.GenerationConfig(
             response_mime_type="application/json",
@@ -125,32 +106,59 @@ async def lookup_regulatory_section(request: QueryRequest):
         response = retry_generate(model, prompt, config=config)
         
         if not response or not response.text:
-            raise HTTPException(status_code=500, detail="The AI engine failed to return regulatory text.")
+            raise HTTPException(status_code=500, detail="AI Engine returned empty data.")
             
-        data = json.loads(response.text)
+        try:
+            data = json.loads(response.text)
+        except Exception:
+            # More aggressive cleaning
+            text = response.text.strip()
+            if "```json" in text:
+                text = text.split("```json")[1].split("```")[0].strip()
+            elif "```" in text:
+                text = text.split("```")[1].split("```")[0].strip()
+            data = json.loads(text)
         
-        # Validation and default assignment
-        required_keys = ["crrText", "psText", "crrUrl", "psUrl", "ebaQas", "comparisonTable", "summary", "practitionerNotes", "executiveBriefing"]
-        for key in required_keys:
-            if key not in data:
-                if key in ["ebaQas", "comparisonTable", "summary", "practitionerNotes"]:
-                    data[key] = []
-                elif key == "executiveBriefing":
-                    data[key] = {"strategicImpact": "MEDIUM", "capitalImpact": "NEUTRAL", "operationalComplexity": "MEDIUM", "keyTakeaways": [], "businessImplications": ""}
-                else:
-                    data[key] = ""
-        
+        # Final normalization to handle ANY hallucinated structure
+        def normalize_to_list(val):
+            if isinstance(val, list): return val
+            if isinstance(val, (str, dict, int, float)) and val: return [str(val)]
+            return []
+
+        data["summary"] = normalize_to_list(data.get("summary"))
+        data["practitionerNotes"] = normalize_to_list(data.get("practitionerNotes"))
+        data["ebaQas"] = data.get("ebaQas") if isinstance(data.get("ebaQas"), list) else []
+        data["comparisonTable"] = data.get("comparisonTable") if isinstance(data.get("comparisonTable"), list) else []
+
+        # Ensure executiveBriefing is always a valid dict
+        eb = data.get("executiveBriefing")
+        if not isinstance(eb, dict):
+            # If AI sent briefing as a string, put it into businessImplications
+            briefing_text = str(eb) if eb else "N/A"
+            data["executiveBriefing"] = {
+                "strategicImpact": "MEDIUM",
+                "capitalImpact": "NEUTRAL",
+                "operationalComplexity": "MEDIUM",
+                "keyTakeaways": [],
+                "businessImplications": briefing_text
+            }
+        else:
+            eb["keyTakeaways"] = normalize_to_list(eb.get("keyTakeaways"))
+            # Ensure other fields are strings
+            for k in ["strategicImpact", "capitalImpact", "operationalComplexity", "businessImplications"]:
+                if k not in eb: eb[k] = "N/A"
+                else: eb[k] = str(eb[k])
+                
         return data
         
     except Exception as e:
-        error_msg = str(e)
-        print(f"Regulatory Engine Error: {error_msg}")
-        raise HTTPException(status_code=500, detail=f"Regulatory Engine Error: {error_msg}")
+        print(f"Regulatory Engine Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Regulatory Engine Error: {str(e)}")
 
 @app.post("/api/analyze")
 async def analyze_query(request: QueryRequest):
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         context_str = f"Context: {request.context}" if request.context else ""
         prompt = f"""

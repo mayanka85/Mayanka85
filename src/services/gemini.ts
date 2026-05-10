@@ -2,7 +2,7 @@ import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
 // Standard official SDK initialization
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const ai = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const ai = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 export interface RegulatoryComparison {
   crrText: string;
@@ -49,6 +49,36 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 10
   }
 }
 
+function sanitizeRegulatoryData(data: any): RegulatoryComparison {
+  const ensureArray = (val: any) => {
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string') return [val];
+    if (val && typeof val === 'object') return Object.values(val);
+    return [];
+  };
+
+  const processed = { ...data };
+  processed.summary = ensureArray(processed.summary);
+  processed.practitionerNotes = ensureArray(processed.practitionerNotes);
+  processed.ebaQas = Array.isArray(processed.ebaQas) ? processed.ebaQas : [];
+  processed.comparisonTable = Array.isArray(processed.comparisonTable) ? processed.comparisonTable : [];
+  
+  if (processed.executiveBriefing && typeof processed.executiveBriefing === 'object') {
+    processed.executiveBriefing = { ...processed.executiveBriefing };
+    processed.executiveBriefing.keyTakeaways = ensureArray(processed.executiveBriefing.keyTakeaways);
+  } else {
+    processed.executiveBriefing = {
+      strategicImpact: 'MEDIUM',
+      capitalImpact: 'NEUTRAL',
+      operationalComplexity: 'MEDIUM',
+      keyTakeaways: [],
+      businessImplications: typeof processed.executiveBriefing === 'string' ? processed.executiveBriefing : 'N/A'
+    };
+  }
+
+  return processed as RegulatoryComparison;
+}
+
 export async function lookupRegulatorySection(filter: string): Promise<RegulatoryComparison> {
   if (USE_PYTHON_BACKEND) {
     try {
@@ -57,92 +87,33 @@ export async function lookupRegulatorySection(filter: string): Promise<Regulator
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: filter }),
       });
-      if (resp.ok) return await resp.json();
+      if (resp.ok) {
+        const rawData = await resp.json();
+        return sanitizeRegulatoryData(rawData);
+      }
     } catch (e) {
       console.warn("Backend fallback active");
     }
   }
 
   return retryWithBackoff(async () => {
-    const result = await ai.generateContent({
-      contents: [{
-        role: 'user',
-        parts: [{
-          text: `You are a Senior Prudential Regulatory Analyst with access to complete consolidated versions of the CRR (Regulation (EU) No 575/2013) and the PRA Basel 3.1 PS01/2026 implementing standards.
+    const prompt = `You are a Senior Prudential Regulatory Analyst. Access your internal knowledge of CRR (Regulation (EU) No 575/2013) and the PRA Basel 3.1 PS01/2026.
       
       TASK: Retrieve and compare the regulatory text for: "${filter}".
       
-      CRITICAL SEARCH & RETRIEVAL LOGIC:
-      1. CRR TEXT RETRIEVAL:
-         - Identify the EXACT CRR Article(s) requested or related to the filter.
-         - You MUST provide the FULL, VERBATIM, and COMPLETELY UNTRUNCATED text for every paragraph and sub-paragraph. 
-         - If the input is "Article 178", provide ALL sections from (1) to (6) and all sub-points.
-         - If the input is "Article 115", provide ALL paragraphs from (1) to (5).
-         - NEVER summarize or use "..." to truncate the text. 
+      OUTPUT REQUIREMENTS:
+      1. CRR TEXT: Provide the FULL, VERBATIM, and COMPLETELY UNTRUNCATED text of the CRR Article. 
+      2. PS01/2026 TEXT: Provide the FULL, VERBATIM text of the correspoding PRA rule.
+      3. ANALYSIS: Professional comparison table, summary, and executive briefing.
       
-      2. PS01/2026 TEXT RETRIEVAL:
-         - Find the corresponding technical standard or rule in PS01/2026 (UK Basel 3.1 implementation).
-         - Provide the FULL, VERBATIM text of the PRA implementation for that specific section.
-      
-      3. COMPARISON & ANALYSIS:
-         - Match the texts precisely.
-         - Create a detailed technical delta table.
-         - Provide practitioner notes and a strategic executive briefing.
-      
-      Return the result in JSON format following the provided schema. Priority is given to completeness of crrText and psText.`
-        }]
-      }],
+      Return EXACTLY a JSON object with the properties: crrText, psText, crrUrl, psUrl, ebaQas, comparisonTable, summary, practitionerNotes, executiveBriefing.`;
+
+    const result = await ai.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
         responseMimeType: "application/json",
-        responseSchema: {
-          type: SchemaType.OBJECT,
-          properties: {
-            crrText: { type: SchemaType.STRING, description: "The FULL AND VERBATIM consolidated legal text of the CRR article. DO NOT TRUNCATE." },
-            psText: { type: SchemaType.STRING, description: "The FULL AND VERBATIM legal text of the PS01/2026 implementation. DO NOT TRUNCATE." },
-            crrUrl: { type: SchemaType.STRING },
-            psUrl: { type: SchemaType.STRING },
-            ebaQas: {
-              type: SchemaType.ARRAY,
-              items: {
-                type: SchemaType.OBJECT,
-                properties: {
-                  id: { type: SchemaType.STRING },
-                  question: { type: SchemaType.STRING },
-                  answer: { type: SchemaType.STRING }
-                },
-                required: ["id", "question", "answer"]
-              }
-            },
-            comparisonTable: {
-              type: SchemaType.ARRAY,
-              items: {
-                type: SchemaType.OBJECT,
-                properties: {
-                  dimension: { type: SchemaType.STRING },
-                  crrValue: { type: SchemaType.STRING },
-                  psValue: { type: SchemaType.STRING },
-                  changeType: { type: SchemaType.STRING }
-                },
-                required: ["dimension", "crrValue", "psValue", "changeType"]
-              }
-            },
-            summary: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-            practitionerNotes: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-            executiveBriefing: {
-              type: SchemaType.OBJECT,
-              properties: {
-                strategicImpact: { type: SchemaType.STRING, enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
-                capitalImpact: { type: SchemaType.STRING, enum: ["NEUTRAL", "INCREASE", "DECREASE"] },
-                operationalComplexity: { type: SchemaType.STRING, enum: ["LOW", "MEDIUM", "HIGH"] },
-                keyTakeaways: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-                businessImplications: { type: SchemaType.STRING }
-              },
-              required: ["strategicImpact", "capitalImpact", "operationalComplexity", "keyTakeaways", "businessImplications"]
-            }
-          },
-          required: ["crrText", "psText", "crrUrl", "psUrl", "ebaQas", "comparisonTable", "summary", "practitionerNotes", "executiveBriefing"]
-        }
-      }
+        temperature: 0.1,
+      },
     });
 
     const text = result.response.text();
@@ -150,7 +121,16 @@ export async function lookupRegulatorySection(filter: string): Promise<Regulator
       throw new Error("Empty response from AI Engine.");
     }
 
-    return JSON.parse(text);
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      // Cleanup common markdown formatting if present
+      const cleaned = text.replace(/```json\n?|\n?```/g, '').trim();
+      data = JSON.parse(cleaned);
+    }
+
+    return sanitizeRegulatoryData(data);
   });
 }
 
@@ -172,17 +152,12 @@ export async function analyzeRegulatoryQuery(query: string, context?: string): P
   }
 
   return retryWithBackoff(async () => {
-    const result = await ai.generateContent({
-      contents: [{
-        role: 'user',
-        parts: [{
-          text: `You are a Regulatory Assistant. Analyze: "${query}"
+    const prompt = `You are a Regulatory Assistant. Analyze: "${query}"
       ${context ? `Context of current regulatory search: ${context}` : ''}
       
-      Provide a concise, expert analysis focusing on capital impact and implementation challenges.`
-        }]
-      }]
-    });
+      Provide a concise, expert analysis focusing on capital impact and implementation challenges.`;
+
+    const result = await ai.generateContent(prompt);
     
     return result.response.text() || "Analysis currently unavailable.";
   });

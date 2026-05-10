@@ -678,7 +678,7 @@ export default function App() {
                             <div className="space-y-6">
                               <h3 className="text-sm font-heading italic uppercase tracking-widest text-muted-foreground">Technical Modifications</h3>
                               <ul className="space-y-4">
-                                {currentResult.summary.map((item, i) => (
+                                {Array.isArray(currentResult.summary) && currentResult.summary.map((item, i) => (
                                   <li key={i} className="flex gap-4 text-sm text-foreground/80 group">
                                     <div className="mt-1 w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 transition-colors">
                                       <ChevronRight className="w-3.5 h-3.5 text-primary" />
@@ -692,7 +692,7 @@ export default function App() {
                               <h3 className="text-sm font-heading italic uppercase tracking-widest text-muted-foreground">Technical Interpretations</h3>
                               <div className="p-6 border-2 border-border rounded-2xl bg-card/50 shadow-sm space-y-5 relative">
                                 <div className="absolute top-4 right-4 text-[10px] font-mono text-muted-foreground/30 uppercase tracking-widest">Expert Insights</div>
-                                {currentResult.practitionerNotes.map((note, i) => (
+                                {Array.isArray(currentResult.practitionerNotes) && currentResult.practitionerNotes.map((note, i) => (
                                   <div key={i} className="text-xs text-muted-foreground italic leading-relaxed border-l-4 border-primary/30 pl-5 py-1">
                                     {note}
                                   </div>
@@ -764,7 +764,7 @@ export default function App() {
                                 <h3 className="text-xl font-heading italic text-foreground">Key Takeaways</h3>
                               </div>
                               <div className="space-y-6">
-                                {currentResult.executiveBriefing.keyTakeaways.map((point, i) => (
+                                {Array.isArray(currentResult.executiveBriefing?.keyTakeaways) && currentResult.executiveBriefing.keyTakeaways.map((point, i) => (
                                   <div key={i} className="flex gap-6 group">
                                     <div className="text-2xl font-heading italic text-primary/20 group-hover:text-primary/40 transition-colors">0{i + 1}</div>
                                     <div className="text-base text-foreground/80 leading-relaxed pt-1">{point}</div>

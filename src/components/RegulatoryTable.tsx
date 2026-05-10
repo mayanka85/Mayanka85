@@ -19,6 +19,8 @@ const getBadgeVariant = (type: string) => {
 };
 
 export const RegulatoryTable: React.FC<RegulatoryTableProps> = ({ rows }) => {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  
   return (
     <div className="border border-border rounded-2xl overflow-hidden bg-card shadow-sm">
       <div className="grid grid-cols-4 bg-muted/50 border-b border-border p-4">
@@ -28,7 +30,7 @@ export const RegulatoryTable: React.FC<RegulatoryTableProps> = ({ rows }) => {
         <div className="font-heading italic text-[11px] uppercase tracking-wider text-muted-foreground">Change Type</div>
       </div>
       <div className="divide-y divide-border">
-        {rows.map((row, idx) => (
+        {safeRows.map((row, idx) => (
           <div key={idx} className="grid grid-cols-4 p-4 hover:bg-muted/30 transition-colors group">
             <div className="text-sm font-semibold text-foreground">{row.dimension}</div>
             <div className="text-xs font-mono text-foreground/70 pr-4 whitespace-pre-wrap">{row.crrValue}</div>
