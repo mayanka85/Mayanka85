@@ -2,7 +2,7 @@ import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 
 // Standard official SDK initialization
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const ai = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const ai = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
 export interface RegulatoryComparison {
   crrText: string;
