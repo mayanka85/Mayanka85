@@ -86,8 +86,8 @@ def retry_generate(model, prompt, config=None, retries=3, delay=1):
 @app.post("/api/lookup", response_model=RegulatoryComparison)
 async def lookup_regulatory_section(request: QueryRequest):
     try:
-        # gemini-2.0-flash is the most stable and high-performance model for this task
-        model = genai.GenerativeModel('gemini-1.5-pro') 
+        # gemini-1.5-flash-latest is stable
+        model = genai.GenerativeModel('gemini-1.5-flash-latest') 
         
         prompt = f"""Analyze the regulatory article: "{request.query}"
         
@@ -158,7 +158,7 @@ async def lookup_regulatory_section(request: QueryRequest):
 @app.post("/api/analyze")
 async def analyze_query(request: QueryRequest):
     try:
-        model = genai.GenerativeModel('gemini-1.5-pro')
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
         
         context_str = f"Context: {request.context}" if request.context else ""
         prompt = f"""

@@ -1,8 +1,8 @@
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 
-// Standard official SDK initialization
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const ai = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+// Modern official SDK initialization
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const MODEL_NAME = "gemini-3-flash-preview";
 
 export interface RegulatoryComparison {
   crrText: string;
@@ -31,19 +31,20 @@ export interface ComparisonRow {
   changeType: 'NO CHANGE' | 'MODIFIED' | 'DELETED' | 'NEW' | 'DIVERGENCE' | 'TRANSITIONAL';
 }
 
-const USE_PYTHON_BACKEND = true;
+// Direct frontend calls are preferred by the modern SDK standards in this environment
+const USE_PYTHON_BACKEND = false;
 
-async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 1000, fallbackModel?: string): Promise<T> {
+async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
   try {
     return await fn();
   } catch (error: any) {
     const errorMsg = error?.message || String(error);
-    const isBusy = errorMsg.includes('503') || errorMsg.includes('UNAVAILABLE') || errorMsg.includes('high demand');
+    const isBusy = errorMsg.includes('503') || errorMsg.includes('UNAVAILABLE') || errorMsg.includes('high demand') || errorMsg.includes('429');
     
     if (isBusy && retries > 0) {
       console.warn(`Regulatory Engine is busy, retrying in ${delay}ms... (${retries} attempts left)`);
       await new Promise(resolve => setTimeout(resolve, delay));
-      return retryWithBackoff(fn, retries - 1, delay * 2, fallbackModel);
+      return retryWithBackoff(fn, retries - 1, delay * 2);
     }
     throw error;
   }
@@ -92,40 +93,59 @@ export async function lookupRegulatorySection(filter: string): Promise<Regulator
         return sanitizeRegulatoryData(rawData);
       }
     } catch (e) {
-      console.warn("Backend fallback active");
+      console.warn("Backend fallback failed, using frontend engine");
     }
   }
 
   return retryWithBackoff(async () => {
-    const prompt = `You are a Senior Prudential Regulatory Analyst. Access your internal knowledge of CRR (Regulation (EU) No 575/2013) and the PRA Basel 3.1 PS01/2026.
+    const prompt = `You are a Senior Prudential Regulatory Analyst specializing in CRR (Regulation (EU) No 575/2013) and the PRA Basel 3.1 PS01/2026.
       
       TASK: Retrieve and compare the regulatory text for: "${filter}".
       
       OUTPUT REQUIREMENTS:
       1. CRR TEXT: Provide the FULL, VERBATIM, and COMPLETELY UNTRUNCATED text of the CRR Article. 
-      2. PS01/2026 TEXT: Provide the FULL, VERBATIM text of the correspoding PRA rule.
+      2. PS01/2026 TEXT: Provide the FULL, VERBATIM text of the corresponding PRA Basel 3.1 rule from PS01/2026.
       3. ANALYSIS: Professional comparison table, summary, and executive briefing.
       
-      Return EXACTLY a JSON object with the properties: crrText, psText, crrUrl, psUrl, ebaQas, comparisonTable, summary, practitionerNotes, executiveBriefing.`;
+      Return EXACTLY a JSON object matching this schema:
+      {
+        "crrText": "string",
+        "psText": "string",
+        "crrUrl": "string (URL to EUR-Lex)",
+        "psUrl": "string (URL to PRA)",
+        "ebaQas": [{"id": "string", "question": "string", "answer": "string"}],
+        "comparisonTable": [{"dimension": "string", "crrValue": "string", "psValue": "string", "changeType": "NO CHANGE|MODIFIED|DELETED|NEW|DIVERGENCE|TRANSITIONAL"}],
+        "summary": ["string"],
+        "practitionerNotes": ["string"],
+        "executiveBriefing": {
+          "strategicImpact": "LOW|MEDIUM|HIGH|CRITICAL",
+          "capitalImpact": "NEUTRAL|INCREASE|DECREASE",
+          "operationalComplexity": "LOW|MEDIUM|HIGH",
+          "keyTakeaways": ["string"],
+          "businessImplications": "string"
+        }
+      }`;
 
-    const result = await ai.generateContent({
+    const response = await ai.models.generateContent({
+      model: MODEL_NAME,
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: {
+      config: {
         responseMimeType: "application/json",
         temperature: 0.1,
       },
     });
 
-    const text = result.response.text();
+    const text = response.text || (response as any).candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) {
-      throw new Error("Empty response from AI Engine.");
+      console.error("Gemini API Full Response:", JSON.stringify(response, null, 2));
+      throw new Error(`AI Engine returned empty data. Response status: ${JSON.stringify((response as any).promptFeedback || 'No feedback')}`);
     }
 
     let data;
     try {
       data = JSON.parse(text);
     } catch (e) {
-      // Cleanup common markdown formatting if present
+      // Cleanup markdown if present
       const cleaned = text.replace(/```json\n?|\n?```/g, '').trim();
       data = JSON.parse(cleaned);
     }
@@ -147,7 +167,7 @@ export async function analyzeRegulatoryQuery(query: string, context?: string): P
         return data.analysis;
       }
     } catch (e) {
-      console.warn("Analysis fallback active");
+      console.warn("Backend analysis failed, using frontend engine");
     }
   }
 
@@ -155,10 +175,13 @@ export async function analyzeRegulatoryQuery(query: string, context?: string): P
     const prompt = `You are a Regulatory Assistant. Analyze: "${query}"
       ${context ? `Context of current regulatory search: ${context}` : ''}
       
-      Provide a concise, expert analysis focusing on capital impact and implementation challenges.`;
+      Provide a concise, expert analysis focusing on capital impact and implementation challenges. Use professional tone.`;
 
-    const result = await ai.generateContent(prompt);
+    const response = await ai.models.generateContent({
+      model: MODEL_NAME,
+      contents: [{ role: 'user', parts: [{ text: prompt }] }]
+    });
     
-    return result.response.text() || "Analysis currently unavailable.";
+    return response.text || "Analysis currently unavailable.";
   });
 }

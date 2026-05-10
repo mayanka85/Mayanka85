@@ -19,11 +19,10 @@ import {
   Download,
   FileDown
 } from 'lucide-react';
-import { auth, db, signIn, logOut, collection, query, where, orderBy, limit, onSnapshot, addDoc, serverTimestamp } from './lib/firebase';
+import { auth, db, logOut, collection, query, where, orderBy, limit, onSnapshot, addDoc, serverTimestamp } from './lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { lookupRegulatorySection, analyzeRegulatoryQuery, RegulatoryComparison } from './services/gemini';
 import { SearchResult } from './types';
-import { AuthOverlay } from './components/AuthOverlay';
 import { SearchHistory } from './components/SearchHistory';
 import { RegulatoryTable } from './components/RegulatoryTable';
 import { Input } from './components/ui/input';
@@ -45,7 +44,7 @@ import {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState('');
@@ -391,7 +390,7 @@ export default function App() {
 
             <Separator orientation="vertical" className="h-4 bg-border" />
             <div className="flex items-center gap-3">
-              {user ? (
+              {user && (
                 <>
                   <div className="text-right hidden sm:block">
                     <p className="text-[11px] font-semibold text-foreground">{user.displayName}</p>
@@ -405,15 +404,6 @@ export default function App() {
                     <LogOut className="w-4 h-4" />
                   </button>
                 </>
-              ) : (
-                <Button 
-                  onClick={signIn}
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl px-4 text-[10px] uppercase font-bold tracking-widest border-2 hover:border-primary hover:text-primary transition-all shadow-sm"
-                >
-                  Sign In
-                </Button>
               )}
             </div>
           </div>
